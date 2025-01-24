@@ -1,8 +1,7 @@
 {
   "extends": "@repo/typescript-config/base.json",
   "compilerOptions": {
-    "noEmit": true,
-    "allowJs": true
+    "noEmit": true
   },
   "exclude": ["dist", "node_modules"]
 }
