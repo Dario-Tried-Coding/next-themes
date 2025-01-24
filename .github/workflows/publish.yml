@@ -1,0 +1,46 @@
+name: Publish
+
+on:
+  push:
+    branches: ['main']
+    paths:
+      - 'packages/next-themify/**'
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - 'packages/next-themify/**'
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  publish:
+    name: Publish
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    # To use Remote Caching, uncomment the next lines and follow the steps below.
+    # env:
+    #  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+    #  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - run: pnpm install
+
+      - name: Create Release Pull Request or Publish
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          publish: pnpm run publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
