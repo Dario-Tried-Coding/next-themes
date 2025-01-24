@@ -1,0 +1,48 @@
+{
+  "name": "@next-themes/core",
+  "version": "0.0.0",
+  "description": "A typesafe abstraction for advanced theming across frameworks.",
+  "private": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "test": "vitest run",
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "tsc"
+  },
+  "keywords": [
+    "next.js",
+    "theming",
+    "react",
+    "typescript"
+  ],
+  "author": "dariotriedcoding",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Dario-Tried-Coding/next-themify"
+  },
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./types": {
+      "import": "./dist/types.mjs",
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.js"
+    }
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}
