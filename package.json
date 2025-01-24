@@ -2,9 +2,12 @@
   "name": "next-themes",
   "private": true,
   "scripts": {
+    "CI": "turbo lint test build --filter=next-themify",
+    "publish": "pnpm run CI && changeset publish",
     "build": "turbo build",
     "dev": "turbo dev",
     "lint": "turbo lint",
+    "test": "turbo test",
     "format": "prettier --write \"**/*.{ts,tsx,md}\""
   },
   "devDependencies": {
