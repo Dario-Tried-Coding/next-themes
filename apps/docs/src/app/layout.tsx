@@ -1,3 +1,5 @@
+import { Script } from '../components/Script'
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -5,7 +7,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang='en'>
-      <body>{children}</body>
+      <body>
+        <Script />
+        {children}
+      </body>
     </html>
   )
 }

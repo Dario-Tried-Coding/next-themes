@@ -13,9 +13,7 @@
     "lint": "tsc"
   },
   "keywords": [
-    "next.js",
     "theming",
-    "react",
     "typescript"
   ],
   "author": "dariotriedcoding",
