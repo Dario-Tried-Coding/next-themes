@@ -1,8 +1,8 @@
 import { ResolvedMode } from './types/config/mode'
 import { ScriptArgs } from './types/script'
-import { NullOr } from './types/utils'
+import { Nullable, NullOr, UndefinedOr } from './types/utils'
 
-export function script({ keys: { stateSK, modeSK }, constraints: provConstraints, modeHandling }: ScriptArgs) {
+export function script({ keys: { stateSK, modeSK }, constraints: provConstraints, modeHandling, listeners }: ScriptArgs) {
   const constraints = new Map(Object.entries(provConstraints).map(([key, { allowed, ...rest }]) => [key, { allowed: new Set(allowed), ...rest }]))
 
   const utils = {
@@ -42,12 +42,12 @@ export function script({ keys: { stateSK, modeSK }, constraints: provConstraints
 
   const validation = {
     validateValue(prop: string, value: string, fallback?: string) {
-      const isHandled = Object.keys(constraints).includes(prop)
+      const isHandled = constraints.has(prop)
       const isAllowed = isHandled && !!value ? constraints.get(prop)!.allowed.has(value) : false
       const isAllowedFallback = isHandled && !!fallback ? constraints.get(prop)!.allowed.has(fallback) : false
 
-      const defaultFallback = isHandled ? constraints.get(prop)!.fallback : undefined
-      const valValue = !isHandled ? undefined : isAllowed ? (value as NonNullable<typeof value>) : isAllowedFallback ? (fallback as NonNullable<typeof fallback>) : defaultFallback
+      const preferred = isHandled ? constraints.get(prop)!.preferred : undefined
+      const valValue = !isHandled ? undefined : isAllowed ? value : isAllowedFallback ? (fallback as NonNullable<typeof fallback>) : preferred
 
       return { passed: isHandled && isAllowed, value: valValue }
     },
@@ -55,9 +55,9 @@ export function script({ keys: { stateSK, modeSK }, constraints: provConstraints
       const results: Map<string, { passed: boolean; value: string }> = new Map()
       const sanValues: Map<string, string> = new Map()
 
-      for (const [prop, { fallback }] of constraints.entries()) {
+      for (const [prop, { preferred }] of constraints.entries()) {
         results.set(prop, { passed: false, value: undefined as unknown as string })
-        sanValues.set(prop, fallback)
+        sanValues.set(prop, preferred)
       }
 
       for (const [prop, fallback] of fallbacks?.entries() ?? []) {
@@ -74,11 +74,10 @@ export function script({ keys: { stateSK, modeSK }, constraints: provConstraints
 
       const passed = Object.values(results).every(({ passed }) => passed)
 
-      console.log({ passed, values: sanValues, results })
       return { passed, values: sanValues, results }
     },
   }
-
+  
   class StateManager {
     private static instance: StateManager
     private _state: NullOr<Map<string, string>> = null
@@ -100,31 +99,51 @@ export function script({ keys: { stateSK, modeSK }, constraints: provConstraints
       const newState = new Map([...(this._state ? this._state : []), ...value])
       this._state = newState
     }
+
+    get mode(): UndefinedOr<{ prop: string; value: string }> {
+      if (!modeHandling) return undefined
+
+      const { prop } = modeHandling
+      const value = this._state?.get(prop) as NonNullable<ReturnType<NonNullable<StateManager['_state']>['get']>>
+      return { prop, value }
+    }
+
+    set mode(value: string) {
+      if (!modeHandling) return
+
+      const { prop } = modeHandling
+      this.state = new Map([[prop, value]])
+    }
   }
-
+  
   class StorageManager {
-    private stateSK = stateSK
-    private modeSK = modeSK
-
     get state(): NullOr<string> {
-      return localStorage.getItem(this.stateSK)
+      return localStorage.getItem(stateSK)
     }
 
     set state(value: string) {
       const isStored = value === this.state
-      if (!isStored) localStorage.setItem(this.stateSK, value)
+      if (!isStored) localStorage.setItem(stateSK, value)
 
-      const mode = utils.jsonToMap(value).get(modeHandling?.prop)
-      if (mode && modeHandling?.store) this.mode = mode
+      const mode = utils.jsonToMap(value).get(modeHandling?.prop) as string
+      const isSet = mode === this.mode
+      if (mode && modeHandling?.store && !isSet) this.mode = mode
     }
     
-    get mode(): NullOr<string> {
-      return localStorage.getItem(this.modeSK)
+    get mode(): Nullable<string> {
+      if (!modeHandling?.store) return
+      return localStorage.getItem(modeSK)
     }
-    
+
     set mode(value: string) {
+      if (!modeHandling?.store) return
+
       const isStored = value === this.mode
-      if (!isStored) localStorage.setItem(this.modeSK, value)
+      if (!isStored) localStorage.setItem(modeSK, value)
+
+      const isSet = utils.jsonToMap(this.state).get(modeHandling?.prop) === value
+      const mappedValue = new Map([[modeHandling?.prop, value]])
+      if (!isSet) this.state = utils.mapToJson(mappedValue)
     }
   }
 
@@ -174,21 +193,61 @@ export function script({ keys: { stateSK, modeSK }, constraints: provConstraints
   }
 
   class NextThemes {
-    private stateManager = StateManager.getInstance()
-    private storageManager = new StorageManager()
-    private domManager = new DOMManager()
+    #stateManager = StateManager.getInstance()
+    #storageManager = new StorageManager()
+    #domManager = new DOMManager()
 
-    public init() {
-      const { values } = validation.validateValues(utils.jsonToMap(this.storageManager.state))
+    private static instance: NextThemes
 
-      this.storageManager.state = utils.mapToJson(values)
-      this.stateManager.state = values
-      this.domManager.setAttrs(values)
+    private constructor() {
+      this.#init()
+    }
 
-      alert('NextThemes initialized')
+    public static getInstance(): NextThemes {
+      if (!NextThemes.instance) {
+        NextThemes.instance = new NextThemes()
+      }
+      return NextThemes.instance
+    }
+
+    #init() {
+      const { values } = validation.validateValues(utils.jsonToMap(this.#storageManager.state))
+
+      this.#storageManager.state = utils.mapToJson(values)
+      this.#stateManager.state = values
+      this.#domManager.setAttrs(values)
+
+      if (listeners.includes('storage')) {
+        window.addEventListener('storage', ({ oldValue, newValue, key }) => {
+          if (key === stateSK) {
+            const oldValues = utils.jsonToMap(oldValue)
+            const newValues = utils.jsonToMap(newValue)
+            const { values } = validation.validateValues(newValues, oldValues)
+
+            this.#storageManager.state = utils.mapToJson(values)
+            this.#stateManager.state = values
+            this.#domManager.setAttrs(values)
+          }
+
+          if (key === modeSK && modeHandling?.store) {
+            const { value } = validation.validateValue(modeHandling?.prop, newValue ?? '', oldValue ?? '')
+            if (!value) return
+
+            this.#storageManager.mode = value
+            this.#stateManager.mode = value
+            this.#domManager.setAttr(modeHandling.prop, value)
+          }
+        })
+      }
+    }
+
+    public test() {
+      console.log('test')
     }
   }
 
-  window.NextThemes = new NextThemes()
-  window.NextThemes.init()
+  const instance = NextThemes.getInstance()
+  window.nextThemes = {
+    test: instance.test,
+  }
 }

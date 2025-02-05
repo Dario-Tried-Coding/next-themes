@@ -1,7 +1,7 @@
 declare global {
   interface Window {
-    NextThemes: {
-      init: () => void
+    nextThemes: {
+      test: () => void
     }
   }
 }

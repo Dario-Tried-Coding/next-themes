@@ -6,7 +6,7 @@ export const Script = () => {
     constraints: {
       mode: {
         allowed: ['light', 'dark', 'system'],
-        fallback: 'light',
+        preferred: 'system',
       }
     },
     modeHandling: {
@@ -28,7 +28,8 @@ export const Script = () => {
     keys: {
       stateSK: 'next-themes',
       modeSK: 'theme'
-    }
+    },
+    listeners: ['storage']
   } as const satisfies ScriptArgs)
 
   return <script dangerouslySetInnerHTML={{ __html: `(${script.toString()})(${scriptArgs})` }} />
