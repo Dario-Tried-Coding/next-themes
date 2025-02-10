@@ -3,33 +3,16 @@ import {ScriptArgs} from '@next-themes/core/types'
 
 export const Script = () => {
   const scriptArgs = JSON.stringify({
-    constraints: {
+    config: {
       mode: {
-        allowed: ['light', 'dark', 'system'],
-        preferred: 'system',
-      }
-    },
-    modeHandling: {
-      prop: 'mode',
-      stratObj: {
         type: 'mode',
         strategy: 'system',
-        enableSystem: true,
-        preferred: 'system',
-        fallback: 'light'
-      },
-      resolvedModes: {
-        light: 'light',
-        dark: 'dark'
-      },
-      selectors: ['colorScheme'],
-      store: true
+        base: 'system',
+        fallback: 'light',
+        selector: 'colorScheme',
+      }
     },
-    keys: {
-      stateSK: 'next-themes',
-      modeSK: 'theme'
-    },
-    listeners: ['storage']
+    listeners: ['DOM-attrs']
   } as const satisfies ScriptArgs)
 
   return <script dangerouslySetInnerHTML={{ __html: `(${script.toString()})(${scriptArgs})` }} />
