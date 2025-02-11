@@ -8,8 +8,8 @@ export function script({ storageKey, config, listeners: provListeners }: ScriptA
   const defaults = {
     storageKey: 'next-themes',
     modeHandling: {
-      store: false,
       storageKey: 'theme',
+      store: false,
       cssSelectors: [] as const satisfies CssSelector[],
     },
     listeners: [] as const satisfies Listener[],
@@ -19,11 +19,11 @@ export function script({ storageKey, config, listeners: provListeners }: ScriptA
 
   // #region CONFIG PROCESSOR (CP)
   type Constraints = Map<string, { base: string; options: Set<string> }>
-  type ModeHandling = { prop: string; strategy: Strat; resolvedModes: Map<string, ResolvedMode>; system: UndefinedOr<{ mode: string; fallback: string }>; cssSelectors: CssSelector[]; store: boolean; storageKey: UndefinedOr<string> }
+  type ModeHandling = { prop: string; strategy: Strat; resolvedModes: Map<string, ResolvedMode>; system: UndefinedOr<{ mode: string; fallback: string }>; cssSelectors: CssSelector[]; store: boolean; storageKey: string }
   class ConfigProcessor {
     private static instance: ConfigProcessor
-    public constraints: Constraints
-    public modeHandling: NullOr<ModeHandling>
+    private _constraints: Constraints
+    private _modeHandling: NullOr<ModeHandling>
 
     private constructor() {
       const constraints: Constraints = new Map()
@@ -48,7 +48,7 @@ export function script({ storageKey, config, listeners: provListeners }: ScriptA
             }; break
         }
       }
-      this.constraints = constraints
+      this._constraints = constraints
 
       const modeConfig = Object.entries(config).find(([_, { type }]) => type === 'mode') as UndefinedOr<[string, ModeProp]>
 
@@ -66,7 +66,7 @@ export function script({ storageKey, config, listeners: provListeners }: ScriptA
               default: break
             }
 
-      this.modeHandling = modeConfig
+      this._modeHandling = modeConfig
         ? {
             prop: modeConfig[0],
             strategy: modeConfig[1].strategy,
@@ -80,19 +80,29 @@ export function script({ storageKey, config, listeners: provListeners }: ScriptA
                 : undefined,
             cssSelectors: modeConfig[1].selector ? (Array.isArray(modeConfig[1].selector) ? modeConfig[1].selector : [modeConfig[1].selector]) : defaults.modeHandling.cssSelectors,
             store: modeConfig[1].store ?? defaults.modeHandling.store,
-            storageKey: modeConfig[1].storageKey,
+            storageKey: modeConfig[1].storageKey ?? defaults.modeHandling.storageKey,
           }
         : null
     }
 
-    public static getInstance() {
+    private static getInstance() {
       if (!ConfigProcessor.instance) ConfigProcessor.instance = new ConfigProcessor()
       return ConfigProcessor.instance
+    }
+
+    public static get modeHandling() {
+      return ConfigProcessor.getInstance()._modeHandling
+    }
+
+    public static get constraints() {
+      return ConfigProcessor.getInstance()._constraints
     }
   }
 
   // #region UTILS
   class Utils {
+    private constructor() {}
+
     static merge(...maps: NullOr<Map<string, string>>[]) {
       return maps.reduce((acc, map) => {
         if (!map) return acc
@@ -107,7 +117,6 @@ export function script({ storageKey, config, listeners: provListeners }: ScriptA
 
   // #region VALIDATOR
   class Validator<TState extends 'uninitialized' | 'initialized' = 'uninitialized'> {
-    private config = ConfigProcessor.getInstance()
     private values: Map<string, string> = new Map()
 
     private constructor() {}
@@ -134,11 +143,11 @@ export function script({ storageKey, config, listeners: provListeners }: ScriptA
     }
 
     #validate(prop: string, value: string, fallback?: string) {
-      const isHandled = this.config.constraints.has(prop)
-      const isAllowed = isHandled && !!value ? this.config.constraints.get(prop)!.options.has(value) : false
-      const isAllowedFallback = isHandled && !!fallback ? this.config.constraints.get(prop)!.options.has(fallback) : false
+      const isHandled = ConfigProcessor.constraints.has(prop)
+      const isAllowed = isHandled && !!value ? ConfigProcessor.constraints.get(prop)!.options.has(value) : false
+      const isAllowedFallback = isHandled && !!fallback ? ConfigProcessor.constraints.get(prop)!.options.has(fallback) : false
 
-      const preferred = isHandled ? this.config.constraints.get(prop)!.base : undefined
+      const preferred = isHandled ? ConfigProcessor.constraints.get(prop)!.base : undefined
       const valValue = !isHandled ? undefined : isAllowed ? value : isAllowedFallback ? (fallback as NonNullable<typeof fallback>) : preferred
 
       return { passed: isHandled && isAllowed, value: valValue }
@@ -149,7 +158,7 @@ export function script({ storageKey, config, listeners: provListeners }: ScriptA
       const results: Map<string, { passed: boolean; value: string }> = new Map()
       const sanValues: Map<string, string> = new Map()
 
-      for (const [prop, { base }] of this.config.constraints.entries()) {
+      for (const [prop, { base }] of ConfigProcessor.constraints.entries()) {
         results.set(prop, { passed: false, value: undefined as unknown as string })
         sanValues.set(prop, base)
       }
@@ -172,5 +181,70 @@ export function script({ storageKey, config, listeners: provListeners }: ScriptA
 
   // #region CONSTANTS
   const stateSK = storageKey ?? defaults.storageKey
-  const modeSK = ConfigProcessor.getInstance().modeHandling?.storageKey ?? defaults.modeHandling.storageKey
+
+  // #region STORAGE
+  class StorageManager {
+    private static instance: StorageManager
+    private _state: Nullable<Map<string, string>>
+
+    private constructor() {
+      const stateString = window.localStorage.getItem(stateSK)
+      const { passed, values } = Validator.ofJSON(stateString).validate()
+      if (!passed) this.store(stateSK, Utils.mapToJSON(values))
+      this._state = values
+
+      if (ConfigProcessor.modeHandling?.store) {
+        const mode = values.get(ConfigProcessor.modeHandling.prop)
+        if (mode) this.store(ConfigProcessor.modeHandling.storageKey, mode)
+      }
+    }
+
+    private static getInstance() {
+      if (!StorageManager.instance) StorageManager.instance = new StorageManager()
+      return StorageManager.instance
+    }
+
+    private store(storageKey: string, string: string) {
+      const needsUpdate = string !== this.retrieve(storageKey)
+      if (needsUpdate) window.localStorage.setItem(storageKey, string)
+    }
+
+    private retrieve(storageKey: string) {
+      return window.localStorage.getItem(storageKey)
+    }
+
+    public static get state() {
+      return StorageManager.getInstance()._state as NonNullable<StorageManager['_state']>
+    }
+
+    public static set state(values: Map<string, string>) {
+      const currState = StorageManager.state
+      const merged = Utils.merge(currState, values)
+      StorageManager.getInstance()._state = merged
+    }
+  }
+
+  class DOMManager {
+    private static instance: DOMManager
+    private _state: Map<string, string>
+
+    private constructor() {
+      
+    }
+
+    private static getInstance() {
+      if (!DOMManager.instance) DOMManager.instance = new DOMManager()
+      return DOMManager.instance
+    }
+
+    public static get state(){
+      return DOMManager.getInstance()._state
+    }
+
+    public static set state(values: Map<string, string>) {
+      const currState = DOMManager.state
+      const merged = Utils.merge(currState, values) as NonNullable<DOMManager['_state']>
+      DOMManager.getInstance()._state = merged
+    }
+  }
 }
