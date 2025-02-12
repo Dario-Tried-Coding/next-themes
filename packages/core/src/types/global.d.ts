@@ -1,8 +1,8 @@
+import { NextThemes } from "./script"
+
 declare global {
   interface Window {
-    nextThemes: {
-      test: () => void
-    }
+    NextThemes: typeof NextThemes
   }
 }
 

@@ -10,9 +10,10 @@ export const Script = () => {
         base: 'system',
         fallback: 'light',
         selector: 'colorScheme',
+        store: true
       }
     },
-    listeners: ['DOM-attrs']
+    observers: ['DOM-attrs']
   } as const satisfies ScriptArgs)
 
   return <script dangerouslySetInnerHTML={{ __html: `(${script.toString()})(${scriptArgs})` }} />

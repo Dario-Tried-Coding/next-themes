@@ -8,10 +8,10 @@ type Strats = BaseStrats & {
 }
 export type Strat = Strats[keyof Strats]
 
-export type CssSelector = 'class' | 'colorScheme'
+export type Selector = 'class' | 'colorScheme'
 export type ResolvedMode = 'light' | 'dark'
 
-type Mode = { type: 'mode'; selector?: CssSelector | CssSelector[]; store?: boolean; storageKey?: string }
+type Mode = { type: 'mode'; selector?: Selector | Selector[]; store?: boolean; storageKey?: string }
 
 export type ModeMono<V extends string = string> = Mode & { strategy: Strats['mono']; key: V; colorScheme: ResolvedMode }
 

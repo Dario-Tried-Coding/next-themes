@@ -1,29 +1,30 @@
 import { ScriptArgs } from './types'
-import { CssSelector, ModeProp, ResolvedMode, Strat } from './types/config/mode'
-import { Listener } from './types/script'
-import { Nullable, NullOr, UndefinedOr } from './types/utils'
+import { ModeProp, ResolvedMode, Selector, Strat } from './types/config/mode'
+import { Observer } from './types/script'
+import { NullOr, UndefinedOr } from './types/utils'
 
-export function script({ storageKey, config, listeners: provListeners }: ScriptArgs) {
+export function script({ storageKey, config, observers: provObservers }: ScriptArgs) {
   // #region DEFAULTS
   const defaults = {
     storageKey: 'next-themes',
     modeHandling: {
       storageKey: 'theme',
       store: false,
-      cssSelectors: [] as const satisfies CssSelector[],
+      Selectors: [] as const satisfies Selector[],
     },
-    listeners: [] as const satisfies Listener[],
+    observers: [] as const satisfies Observer[],
   } as const
-
-  const listeners = provListeners ?? defaults.listeners
 
   // #region CONFIG PROCESSOR (CP)
   type Constraints = Map<string, { base: string; options: Set<string> }>
-  type ModeHandling = { prop: string; strategy: Strat; resolvedModes: Map<string, ResolvedMode>; system: UndefinedOr<{ mode: string; fallback: string }>; cssSelectors: CssSelector[]; store: boolean; storageKey: string }
+  type ModeHandling = { prop: string; strategy: Strat; resolvedModes: Map<string, ResolvedMode>; system: UndefinedOr<{ mode: string; fallback: string }>; selectors: Selector[]; store: boolean; storageKey: string }
+  type Observers = Observer[]
   class ConfigProcessor {
     private static instance: ConfigProcessor
+    private _storageKey: string
     private _constraints: Constraints
     private _modeHandling: NullOr<ModeHandling>
+    private _observers: Observers
 
     private constructor() {
       const constraints: Constraints = new Map()
@@ -78,11 +79,14 @@ export function script({ storageKey, config, listeners: provListeners }: ScriptA
                     fallback: modeConfig[1].fallback,
                   }
                 : undefined,
-            cssSelectors: modeConfig[1].selector ? (Array.isArray(modeConfig[1].selector) ? modeConfig[1].selector : [modeConfig[1].selector]) : defaults.modeHandling.cssSelectors,
+            selectors: modeConfig[1].selector ? (Array.isArray(modeConfig[1].selector) ? modeConfig[1].selector : [modeConfig[1].selector]) : defaults.modeHandling.Selectors,
             store: modeConfig[1].store ?? defaults.modeHandling.store,
             storageKey: modeConfig[1].storageKey ?? defaults.modeHandling.storageKey,
           }
         : null
+
+      this._storageKey = storageKey ?? defaults.storageKey
+      this._observers = provObservers ?? defaults.observers
     }
 
     private static getInstance() {
@@ -97,17 +101,27 @@ export function script({ storageKey, config, listeners: provListeners }: ScriptA
     public static get constraints() {
       return ConfigProcessor.getInstance()._constraints
     }
+
+    public static get observers() {
+      return ConfigProcessor.getInstance()._observers
+    }
+
+    public static get storageKey() {
+      return ConfigProcessor.getInstance()._storageKey
+    }
   }
 
   // #region UTILS
   class Utils {
     private constructor() {}
 
-    static merge(...maps: NullOr<Map<string, string>>[]) {
-      return maps.reduce((acc, map) => {
+    static merge<T extends NullOr<Map<string, string>>[]>(...maps: T): T[number] extends null ? null : Map<string, string> {
+      const merged = maps.reduce((acc, map) => {
         if (!map) return acc
         return new Map([...(acc ?? []), ...map])
       }, new Map<string, string>())
+
+      return merged as T[number] extends null ? null : Map<string, string>
     }
 
     static mapToJSON(map: Map<string, string>) {
@@ -142,13 +156,13 @@ export function script({ storageKey, config, listeners: provListeners }: ScriptA
       return validator
     }
 
-    #validate(prop: string, value: string, fallback?: string) {
+    static validate(prop: string, value: NullOr<string>, fallback?: NullOr<string>) {
       const isHandled = ConfigProcessor.constraints.has(prop)
       const isAllowed = isHandled && !!value ? ConfigProcessor.constraints.get(prop)!.options.has(value) : false
       const isAllowedFallback = isHandled && !!fallback ? ConfigProcessor.constraints.get(prop)!.options.has(fallback) : false
 
       const preferred = isHandled ? ConfigProcessor.constraints.get(prop)!.base : undefined
-      const valValue = !isHandled ? undefined : isAllowed ? value : isAllowedFallback ? (fallback as NonNullable<typeof fallback>) : preferred
+      const valValue = !isHandled ? undefined : isAllowed ? value! : isAllowedFallback ? fallback! : preferred
 
       return { passed: isHandled && isAllowed, value: valValue }
     }
@@ -164,13 +178,13 @@ export function script({ storageKey, config, listeners: provListeners }: ScriptA
       }
 
       for (const [prop, fallback] of fallbacks?.entries() ?? []) {
-        const { passed, value: sanValue } = this.#validate(prop, fallback)
+        const { passed, value: sanValue } = Validator.validate(prop, fallback)
         results.set(prop, { passed, value: fallback })
         if (sanValue) sanValues.set(prop, sanValue)
       }
 
       for (const [prop, value] of this.values.entries()) {
-        const { passed, value: sanValue } = this.#validate(prop, value)
+        const { passed, value: sanValue } = Validator.validate(prop, value)
         results.set(prop, { passed, value })
         if (sanValue) sanValues.set(prop, sanValue)
       }
@@ -179,19 +193,63 @@ export function script({ storageKey, config, listeners: provListeners }: ScriptA
     }
   }
 
-  // #region CONSTANTS
-  const stateSK = storageKey ?? defaults.storageKey
+  // #region EVENTS
+  type EventMap = {
+    DOMUpdate: Map<string, string>
+  }
+  class EventManager {
+    private static events: Map<string, Set<(...args: any[]) => void>> = new Map()
+
+    static on<K extends keyof EventMap>(event: K, callback: (payload: EventMap[K]) => void): void {
+      if (!this.events.has(event)) {
+        this.events.set(event, new Set())
+      }
+      this.events.get(event)!.add(callback)
+    }
+
+    static off<K extends keyof EventMap>(event: K, callback: (payload: EventMap[K]) => void): void {
+      this.events.get(event)?.delete(callback)
+    }
+
+    static emit<K extends keyof EventMap>(event: K, payload: EventMap[K]): void {
+      this.events.get(event)?.forEach((callback) => callback(payload))
+    }
+
+    static clear(event?: keyof EventMap): void {
+      if (event) {
+        this.events.delete(event)
+      } else {
+        this.events.clear()
+      }
+    }
+  }
 
   // #region STORAGE
   class StorageManager {
     private static instance: StorageManager
-    private _state: Nullable<Map<string, string>>
+    private _state: NullOr<Map<string, string>>
 
     private constructor() {
-      const stateString = window.localStorage.getItem(stateSK)
-      const { passed, values } = Validator.ofJSON(stateString).validate()
-      if (!passed) this.store(stateSK, Utils.mapToJSON(values))
+      const stateString = StorageManager.retrieve(ConfigProcessor.storageKey)
+      const { values } = Validator.ofJSON(stateString).validate()
+
       this._state = values
+      StorageManager.storeState(values)
+
+      EventManager.on('DOMUpdate', (values) => (StorageManager.state = values))
+    }
+
+    private static retrieve(storageKey: string) {
+      return window.localStorage.getItem(storageKey)
+    }
+
+    private static store(storageKey: string, string: string) {
+      const needsUpdate = string !== this.retrieve(storageKey)
+      if (needsUpdate) window.localStorage.setItem(storageKey, string)
+    }
+
+    private static storeState(values: Map<string, string>) {
+      StorageManager.store(ConfigProcessor.storageKey, Utils.mapToJSON(values))
 
       if (ConfigProcessor.modeHandling?.store) {
         const mode = values.get(ConfigProcessor.modeHandling.prop)
@@ -199,52 +257,135 @@ export function script({ storageKey, config, listeners: provListeners }: ScriptA
       }
     }
 
-    private static getInstance() {
-      if (!StorageManager.instance) StorageManager.instance = new StorageManager()
-      return StorageManager.instance
-    }
-
-    private store(storageKey: string, string: string) {
-      const needsUpdate = string !== this.retrieve(storageKey)
-      if (needsUpdate) window.localStorage.setItem(storageKey, string)
-    }
-
-    private retrieve(storageKey: string) {
-      return window.localStorage.getItem(storageKey)
-    }
-
     public static get state() {
-      return StorageManager.getInstance()._state as NonNullable<StorageManager['_state']>
+      if (!StorageManager.instance) StorageManager.instance = new StorageManager()
+      return StorageManager.instance._state!
     }
 
     public static set state(values: Map<string, string>) {
       const currState = StorageManager.state
       const merged = Utils.merge(currState, values)
-      StorageManager.getInstance()._state = merged
+      StorageManager.instance._state = merged
+      StorageManager.storeState(merged)
     }
   }
 
   class DOMManager {
     private static instance: DOMManager
-    private _state: Map<string, string>
+    private static target = document.documentElement
+    private _state: NullOr<Map<string, string>> = null
+    private _resolvedMode: UndefinedOr<ResolvedMode>
 
-    private constructor() {
-      
+    private constructor(values: Map<string, string>) {
+      this.applyState(values)
+
+      if (ConfigProcessor.observers.includes('DOM-attrs')) {
+        const handleMutations = (mutations: MutationRecord[]) => {
+          for (const { attributeName, oldValue } of mutations) {
+            // prettier-ignore
+            switch (attributeName) {
+              case 'style': { }; break;
+              case 'class': { }; break;
+              default: {
+                if (!attributeName) return
+
+                const prop = attributeName.replace('data-', '')
+                const stateValue = DOMManager.state.get(prop)
+                const newValue = DOMManager.target.getAttribute(attributeName)
+                const { passed, value: sanValue } = Validator.validate(prop, newValue, oldValue)
+                
+                DOMManager.state = new Map([[prop, sanValue!]])
+                if (sanValue! !== stateValue) EventManager.emit('DOMUpdate', new Map([[prop, sanValue!]]))
+              }
+            }
+          }
+        }
+
+        const observer = new MutationObserver(handleMutations)
+        observer.observe(DOMManager.target, {
+          attributes: true,
+          attributeOldValue: true,
+          attributeFilter: [
+            ...Array.from(ConfigProcessor.constraints.keys()).map((prop) => `data-${prop}`),
+            ...(ConfigProcessor.modeHandling?.selectors.includes('colorScheme') ? ['style'] : []),
+            ...(ConfigProcessor.modeHandling?.selectors.includes('class') ? ['class'] : []),
+          ],
+        })
+      }
     }
 
-    private static getInstance() {
-      if (!DOMManager.instance) DOMManager.instance = new DOMManager()
-      return DOMManager.instance
+    private static getSystemPref() {
+      const supportsPref = window.matchMedia('(prefers-color-scheme)').media !== 'not all'
+      return supportsPref ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : undefined
     }
 
-    public static get state(){
-      return DOMManager.getInstance()._state
+    private static resolveMode(values: Map<string, string>) {
+      if (!ConfigProcessor.modeHandling) return
+
+      const mode = values.get(ConfigProcessor.modeHandling.prop)
+      if (!mode) return
+
+      const isSystemStrat = ConfigProcessor.modeHandling.strategy === 'system'
+      const isSystemMode = ConfigProcessor.modeHandling.system?.mode === mode
+      const isSystem = isSystemStrat && isSystemMode
+      const fallbackMode = ConfigProcessor.modeHandling.system?.fallback
+      if (isSystem) return this.getSystemPref() ?? ConfigProcessor.modeHandling.resolvedModes.get(fallbackMode!)
+
+      return ConfigProcessor.modeHandling.resolvedModes.get(mode)
+    }
+
+    private applyState(values: Map<string, string>) {
+      this._state = Utils.merge(this._state, values)
+      this._state.forEach((value, key) => {
+        const currValue = DOMManager.target.getAttribute(`data-${key}`)
+        const needsUpdate = currValue !== value
+        if (needsUpdate) DOMManager.target.setAttribute(`data-${key}`, value)
+      })
+
+      const resolvedMode = DOMManager.resolveMode(this._state)
+      if (resolvedMode) {
+        this._resolvedMode = resolvedMode
+        if (ConfigProcessor.modeHandling?.selectors.includes('colorScheme')) {
+          const currValue = DOMManager.target.style.colorScheme
+          const needsUpdate = currValue !== resolvedMode
+          if (needsUpdate) DOMManager.target.style.colorScheme = resolvedMode
+        }
+        if (ConfigProcessor.modeHandling?.selectors.includes('class')) {
+          const isSet = DOMManager.target.classList.contains('light') ? 'light' : DOMManager.target.classList.contains('dark') ? 'dark' : undefined
+          if (isSet === resolvedMode) return
+
+          const other = resolvedMode === 'light' ? 'dark' : 'light'
+          DOMManager.target.classList.replace(other, resolvedMode) || DOMManager.target.classList.add(resolvedMode)
+        }
+      }
+    }
+
+    public static get state() {
+      if (!DOMManager.instance) throw new Error('DOMManager must be initialized before accessing state')
+      return DOMManager.instance._state as NonNullable<DOMManager['_state']>
     }
 
     public static set state(values: Map<string, string>) {
-      const currState = DOMManager.state
-      const merged = Utils.merge(currState, values) as NonNullable<DOMManager['_state']>
-      DOMManager.getInstance()._state = merged
+      if (!DOMManager.instance) DOMManager.instance = new DOMManager(values)
+      else DOMManager.instance.applyState(values)
     }
   }
+
+  class Main {
+    private static instance: Main
+    private _state: NullOr<Map<string, string>>
+
+    private constructor() {
+      const storageState = StorageManager.state
+      this._state = storageState
+      DOMManager.state = storageState
+    }
+
+    public static init() {
+      if (!Main.instance) Main.instance = new Main()
+    }
+  }
+
+  window.NextThemes = Main
+  window.NextThemes.init()
 }
