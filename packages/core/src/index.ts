@@ -127,6 +127,29 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
     static mapToJSON(map: Map<string, string>) {
       return JSON.stringify(Object.fromEntries(map))
     }
+
+    static jsonToMap(json: NullOr<string>): Map<string, string> {
+      if (!json?.trim()) return new Map()
+      try {
+        const parsed = JSON.parse(json)
+        if (parsed === null || Array.isArray(parsed) || typeof parsed !== 'object') return new Map()
+        return new Map(Object.entries(parsed).filter(([key, value]) => typeof key === 'string' && typeof value === 'string') as [string, string][])
+      } catch {
+        return new Map()
+      }
+    }
+
+    static isSameMap(map1: Map<string, string>, map2: Map<string, string>) {
+      if (map1 === map2) return true
+
+      if (map1.size !== map2.size) return false
+
+      for (const [key, value] of map1) {
+        if (!map2.has(key) || map2.get(key) !== value) return false
+      }
+
+      return true
+    }
   }
 
   // #region VALIDATOR
@@ -137,16 +160,7 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
 
     static ofJSON(json: NullOr<string>) {
       const validator = new Validator<'initialized'>()
-
-      if (!json?.trim()) return validator
-      try {
-        const parsed = JSON.parse(json)
-        if (parsed === null || Array.isArray(parsed) || typeof parsed !== 'object') return validator
-
-        const entries = Object.entries(parsed).filter(([key, value]) => typeof key === 'string' && typeof value === 'string') as [string, string][]
-        validator.values = new Map(entries)
-      } catch {}
-
+      validator.values = Utils.jsonToMap(json)
       return validator
     }
 
@@ -167,24 +181,25 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
       return { passed: isHandled && isAllowed, value: valValue }
     }
 
-    validate(fallbacks?: Map<string, string>): TState extends 'initialized' ? { passed: boolean; values: Map<string, string>; results: Map<string, { passed: boolean; value: string }> } : never
-    validate(fallbacks?: Map<string, string>) {
+    validate(fallbacks?: NullOr<string> | Map<string, string>): TState extends 'initialized' ? { passed: boolean; values: Map<string, string>; results: Map<string, { passed: boolean; value: string }> } : never
+    validate(fallbacks?: NullOr<string> | Map<string, string>) {
       const results: Map<string, { passed: boolean; value: string }> = new Map()
       const sanValues: Map<string, string> = new Map()
+      const normFallbacks = typeof fallbacks === 'string' ? Utils.jsonToMap(fallbacks) : fallbacks
 
       for (const [prop, { base }] of ConfigProcessor.constraints.entries()) {
         results.set(prop, { passed: false, value: undefined as unknown as string })
         sanValues.set(prop, base)
       }
 
-      for (const [prop, fallback] of fallbacks?.entries() ?? []) {
+      for (const [prop, fallback] of normFallbacks?.entries() ?? []) {
         const { passed, value: sanValue } = Validator.validate(prop, fallback)
         results.set(prop, { passed, value: fallback })
         if (sanValue) sanValues.set(prop, sanValue)
       }
 
       for (const [prop, value] of this.values.entries()) {
-        const { passed, value: sanValue } = Validator.validate(prop, value)
+        const { passed, value: sanValue } = Validator.validate(prop, value, normFallbacks?.get(prop))
         results.set(prop, { passed, value })
         if (sanValue) sanValues.set(prop, sanValue)
       }
@@ -195,7 +210,8 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
 
   // #region EVENTS
   type EventMap = {
-    DOMUpdate: Map<string, string>
+    'DOM:update': Map<string, string>
+    'Storage:update': Map<string, string>
   }
   class EventManager {
     private static events: Map<string, Set<(...args: any[]) => void>> = new Map()
@@ -236,7 +252,17 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
       this._state = values
       StorageManager.storeState(values)
 
-      EventManager.on('DOMUpdate', (values) => (StorageManager.state = values))
+      if (ConfigProcessor.observers.includes('storage')) {
+        window.addEventListener('storage', ({ key, newValue, oldValue }) => {
+          if (key === ConfigProcessor.storageKey) {
+            const state = StorageManager.state
+            const { values } = Validator.ofJSON(newValue).validate(oldValue)
+
+            StorageManager.state = values
+            if (!Utils.isSameMap(values, state)) EventManager.emit('Storage:update', values)
+          }
+        })
+      }
     }
 
     private static retrieve(storageKey: string) {
@@ -284,18 +310,35 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
           for (const { attributeName, oldValue } of mutations) {
             // prettier-ignore
             switch (attributeName) {
-              case 'style': { }; break;
-              case 'class': { }; break;
+              case 'style': {
+                if (!ConfigProcessor.modeHandling?.selectors.includes('colorScheme')) return
+
+                const stateRM = DOMManager.resolvedMode
+                const newRM = DOMManager.target.style.colorScheme
+                
+                if (stateRM !== newRM) DOMManager.target.style.colorScheme = stateRM
+              }; break;
+              case 'class': { 
+                if (!ConfigProcessor.modeHandling?.selectors.includes('class')) return
+
+                const stateRM = DOMManager.resolvedMode
+                const newRM = DOMManager.target.classList.contains('light') ? 'light' : DOMManager.target.classList.contains('dark') ? 'dark' : undefined
+
+                if (stateRM !== newRM) {
+                  const other = stateRM === 'light' ? 'dark' : 'light'
+                  DOMManager.target.classList.replace(other, stateRM) || DOMManager.target.classList.add(stateRM)
+                }
+              }; break;
               default: {
                 if (!attributeName) return
 
                 const prop = attributeName.replace('data-', '')
                 const stateValue = DOMManager.state.get(prop)
                 const newValue = DOMManager.target.getAttribute(attributeName)
-                const { passed, value: sanValue } = Validator.validate(prop, newValue, oldValue)
+                const { value: sanValue } = Validator.validate(prop, newValue, oldValue)
                 
                 DOMManager.state = new Map([[prop, sanValue!]])
-                if (sanValue! !== stateValue) EventManager.emit('DOMUpdate', new Map([[prop, sanValue!]]))
+                if (sanValue! !== stateValue) EventManager.emit('DOM:update', new Map([[prop, sanValue!]]))
               }
             }
           }
@@ -362,12 +405,17 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
 
     public static get state() {
       if (!DOMManager.instance) throw new Error('DOMManager must be initialized before accessing state')
-      return DOMManager.instance._state as NonNullable<DOMManager['_state']>
+      return DOMManager.instance._state!
     }
 
     public static set state(values: Map<string, string>) {
       if (!DOMManager.instance) DOMManager.instance = new DOMManager(values)
       else DOMManager.instance.applyState(values)
+    }
+
+    public static get resolvedMode() {
+      if (!DOMManager.instance) throw new Error('DOMManager must be initialized before accessing resolvedMode')
+      return DOMManager.instance._resolvedMode!
     }
   }
 
@@ -379,6 +427,9 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
       const storageState = StorageManager.state
       this._state = storageState
       DOMManager.state = storageState
+
+      EventManager.on('DOM:update', (values) => (StorageManager.state = values))
+      EventManager.on('Storage:update', (values) => (DOMManager.state = values))
     }
 
     public static init() {
