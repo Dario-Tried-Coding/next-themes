@@ -139,7 +139,8 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
       }
     }
 
-    static isSameMap(map1: Map<string, string>, map2: Map<string, string>) {
+    static isSameMap(map1: NullOr<Map<string, string>>, map2: NullOr<Map<string, string>>) {
+      if (!map1 || !map2) return false
       if (map1 === map2) return true
 
       if (map1.size !== map2.size) return false
@@ -185,6 +186,7 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
     validate(fallbacks?: NullOr<string> | Map<string, string>) {
       const results: Map<string, { passed: boolean; value: string }> = new Map()
       const sanValues: Map<string, string> = new Map()
+      let passed = false
       const normFallbacks = typeof fallbacks === 'string' ? Utils.jsonToMap(fallbacks) : fallbacks
 
       for (const [prop, { base }] of ConfigProcessor.constraints.entries()) {
@@ -199,9 +201,10 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
       }
 
       for (const [prop, value] of this.values.entries()) {
-        const { passed, value: sanValue } = Validator.validate(prop, value, normFallbacks?.get(prop))
+        const { passed: valuePassed, value: sanValue } = Validator.validate(prop, value, normFallbacks?.get(prop))
         results.set(prop, { passed, value })
         if (sanValue) sanValues.set(prop, sanValue)
+        if (valuePassed) passed = true
       }
 
       return { passed: true, values: sanValues, results } as TState extends 'initialized' ? { passed: boolean; values: Map<string, string>; results: Map<string, { passed: boolean; value: string }> } : never
@@ -242,8 +245,8 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
 
   // #region STORAGE
   class StorageManager {
-    private static instance: StorageManager
-    private _state: NullOr<Map<string, string>>
+    private static instance: UndefinedOr<StorageManager> = undefined
+    private _state: NullOr<Map<string, string>> = null
 
     private constructor() {
       const stateString = StorageManager.retrieve(ConfigProcessor.storageKey)
@@ -256,7 +259,7 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
         window.addEventListener('storage', ({ key, newValue, oldValue }) => {
           if (key === ConfigProcessor.storageKey) {
             const state = StorageManager.state
-            const { values } = Validator.ofJSON(newValue).validate(oldValue)
+            const { values, passed, results } = Validator.ofJSON(newValue).validate(oldValue)
 
             StorageManager.state = values
             if (!Utils.isSameMap(values, state)) EventManager.emit('Storage:update', values)
@@ -277,10 +280,13 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
     private static storeState(values: Map<string, string>) {
       StorageManager.store(ConfigProcessor.storageKey, Utils.mapToJSON(values))
 
-      if (ConfigProcessor.modeHandling?.store) {
-        const mode = values.get(ConfigProcessor.modeHandling.prop)
-        if (mode) this.store(ConfigProcessor.modeHandling.storageKey, mode)
-      }
+      const mode = values.get(ConfigProcessor.modeHandling?.prop ?? '')
+      if (mode) StorageManager.storeMode(mode)
+    }
+
+    private static storeMode(mode: string) {
+      if (!ConfigProcessor.modeHandling?.store) return
+      StorageManager.store(ConfigProcessor.modeHandling.storageKey, mode)
     }
 
     public static get state() {
@@ -291,19 +297,24 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
     public static set state(values: Map<string, string>) {
       const currState = StorageManager.state
       const merged = Utils.merge(currState, values)
-      StorageManager.instance._state = merged
+
+      const needsUpdate = !Utils.isSameMap(currState, merged)
+      if (needsUpdate) StorageManager.instance!._state = merged
       StorageManager.storeState(merged)
     }
   }
 
   class DOMManager {
-    private static instance: DOMManager
+    private static instance: UndefinedOr<DOMManager> = undefined
     private static target = document.documentElement
     private _state: NullOr<Map<string, string>> = null
-    private _resolvedMode: UndefinedOr<ResolvedMode>
+    private _resolvedMode: UndefinedOr<ResolvedMode> = undefined
 
     private constructor(values: Map<string, string>) {
-      this.applyState(values)
+      this._state = values
+      this._resolvedMode = DOMManager.resolveMode(values)
+      
+      DOMManager.applyState(values)
 
       if (ConfigProcessor.observers.includes('DOM-attrs')) {
         const handleMutations = (mutations: MutationRecord[]) => {
@@ -313,7 +324,7 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
               case 'style': {
                 if (!ConfigProcessor.modeHandling?.selectors.includes('colorScheme')) return
 
-                const stateRM = DOMManager.resolvedMode
+                const stateRM = DOMManager.resolvedMode!
                 const newRM = DOMManager.target.style.colorScheme
                 
                 if (stateRM !== newRM) DOMManager.target.style.colorScheme = stateRM
@@ -321,7 +332,7 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
               case 'class': { 
                 if (!ConfigProcessor.modeHandling?.selectors.includes('class')) return
 
-                const stateRM = DOMManager.resolvedMode
+                const stateRM = DOMManager.resolvedMode!
                 const newRM = DOMManager.target.classList.contains('light') ? 'light' : DOMManager.target.classList.contains('dark') ? 'dark' : undefined
 
                 if (stateRM !== newRM) {
@@ -333,7 +344,7 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
                 if (!attributeName) return
 
                 const prop = attributeName.replace('data-', '')
-                const stateValue = DOMManager.state.get(prop)
+                const stateValue = DOMManager.state?.get(prop)
                 const newValue = DOMManager.target.getAttribute(attributeName)
                 const { value: sanValue } = Validator.validate(prop, newValue, oldValue)
                 
@@ -377,63 +388,95 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
       return ConfigProcessor.modeHandling.resolvedModes.get(mode)
     }
 
-    private applyState(values: Map<string, string>) {
-      this._state = Utils.merge(this._state, values)
-      this._state.forEach((value, key) => {
+    private static applyState(values: Map<string, string>) {
+      values.forEach((value, key) => {
         const currValue = DOMManager.target.getAttribute(`data-${key}`)
         const needsUpdate = currValue !== value
         if (needsUpdate) DOMManager.target.setAttribute(`data-${key}`, value)
       })
 
-      const resolvedMode = DOMManager.resolveMode(this._state)
-      if (resolvedMode) {
-        this._resolvedMode = resolvedMode
-        if (ConfigProcessor.modeHandling?.selectors.includes('colorScheme')) {
-          const currValue = DOMManager.target.style.colorScheme
-          const needsUpdate = currValue !== resolvedMode
-          if (needsUpdate) DOMManager.target.style.colorScheme = resolvedMode
-        }
-        if (ConfigProcessor.modeHandling?.selectors.includes('class')) {
-          const isSet = DOMManager.target.classList.contains('light') ? 'light' : DOMManager.target.classList.contains('dark') ? 'dark' : undefined
-          if (isSet === resolvedMode) return
+      const resolvedMode = DOMManager.resolveMode(values)
+      if (resolvedMode) DOMManager.applyResolvedMode(resolvedMode)
+    }
 
-          const other = resolvedMode === 'light' ? 'dark' : 'light'
-          DOMManager.target.classList.replace(other, resolvedMode) || DOMManager.target.classList.add(resolvedMode)
-        }
+    private static applyResolvedMode(resolvedMode: ResolvedMode) {
+      if (ConfigProcessor.modeHandling?.selectors.includes('colorScheme')) {
+        const currValue = DOMManager.target.style.colorScheme
+        const needsUpdate = currValue !== resolvedMode
+        if (needsUpdate) DOMManager.target.style.colorScheme = resolvedMode
+      }
+
+      if (ConfigProcessor.modeHandling?.selectors.includes('class')) {
+        const isSet = DOMManager.target.classList.contains('light') ? 'light' : DOMManager.target.classList.contains('dark') ? 'dark' : undefined
+        if (isSet === resolvedMode) return
+
+        const other = resolvedMode === 'light' ? 'dark' : 'light'
+        DOMManager.target.classList.replace(other, resolvedMode) || DOMManager.target.classList.add(resolvedMode)
       }
     }
 
     public static get state() {
-      if (!DOMManager.instance) throw new Error('DOMManager must be initialized before accessing state')
+      if (!DOMManager.instance) throw new Error('DOMManager not initialized')
       return DOMManager.instance._state!
     }
 
     public static set state(values: Map<string, string>) {
       if (!DOMManager.instance) DOMManager.instance = new DOMManager(values)
-      else DOMManager.instance.applyState(values)
+      else {
+        const currState = DOMManager.state
+        const merged = Utils.merge(currState, values)
+
+        const stateNeedsUpdate = !Utils.isSameMap(currState, merged)
+        if (stateNeedsUpdate) DOMManager.instance._state = merged
+        
+        const resModeNeedsUpdate = DOMManager.resolveMode(merged) !== DOMManager.resolvedMode
+        if (resModeNeedsUpdate) DOMManager.instance._resolvedMode = DOMManager.resolveMode(merged)
+        
+        DOMManager.applyState(merged)
+      }
     }
 
     public static get resolvedMode() {
-      if (!DOMManager.instance) throw new Error('DOMManager must be initialized before accessing resolvedMode')
+      if (!DOMManager.instance) throw new Error('DOMManager not initialized')
       return DOMManager.instance._resolvedMode!
     }
   }
 
   class Main {
-    private static instance: Main
-    private _state: NullOr<Map<string, string>>
+    private static instance: UndefinedOr<Main> = undefined
+    private _state: NullOr<Map<string, string>> = null
 
     private constructor() {
       const storageState = StorageManager.state
       this._state = storageState
       DOMManager.state = storageState
 
-      EventManager.on('DOM:update', (values) => (StorageManager.state = values))
-      EventManager.on('Storage:update', (values) => (DOMManager.state = values))
+      EventManager.on('DOM:update', (values) => Main.state = values)
+      EventManager.on('Storage:update', (values) => Main.state = values)
     }
 
     public static init() {
       if (!Main.instance) Main.instance = new Main()
+    }
+
+    public static get state() {
+      if (!Main.instance) Main.instance = new Main()
+      return Main.instance._state!
+    }
+
+    public static set state(values: Map<string, string>) {
+      if (!Main.instance) Main.instance = new Main()
+      else {
+        const currState = Main.state
+        const merged = Utils.merge(currState, values)
+
+        const needsUpdate = !Utils.isSameMap(currState, merged)
+        if (needsUpdate) {
+          Main.instance._state = merged
+          StorageManager.state = merged
+          DOMManager.state = merged
+        }
+      }
     }
   }
 
