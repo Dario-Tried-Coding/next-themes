@@ -37,5 +37,8 @@
       "types": "./dist/types.d.ts",
       "default": "./dist/types.js"
     }
+  },
+  "dependencies": {
+    "@next-themes/core": "workspace:*"
   }
 }

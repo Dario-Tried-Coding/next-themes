@@ -106,6 +106,12 @@ importers:
         specifier: ^8.15.0
         version: 8.15.0(eslint@9.15.0)(typescript@5.5.4)
 
+  packages/react:
+    dependencies:
+      '@next-themes/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/typescript-config: {}
 
 packages:
