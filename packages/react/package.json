@@ -1,8 +1,7 @@
 {
-  "name": "@next-themes/core",
-  "version": "0.0.1",
-  "description": "A typesafe abstraction for advanced theming across frameworks.",
-  "private": false,
+  "name": "react",
+  "version": "0.0.0",
+  "description": "A typesafe abstraction for advanced theming in your React apps.",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -14,7 +13,9 @@
   },
   "keywords": [
     "theming",
-    "typescript"
+    "typescript",
+    "react",
+    "next.js"
   ],
   "author": "dariotriedcoding",
   "repository": {
@@ -36,11 +37,5 @@
       "types": "./dist/types.d.ts",
       "default": "./dist/types.js"
     }
-  },
-  "devDependencies": {
-    "@repo/typescript-config": "workspace:*",
-    "tsup": "^8.3.5",
-    "typescript": "^5.7.3",
-    "vitest": "^3.0.4"
   }
 }
