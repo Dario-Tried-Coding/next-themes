@@ -1,3 +1,4 @@
+import { State } from '../script';
 import { Config } from './config';
 
 export type Observer = 'storage' | 'DOM-attrs'
@@ -8,6 +9,8 @@ export type ScriptArgs = {
   observers?: Observer[]
 }
 
-export abstract class NextThemes {
-  static init() {}
+export interface NextThemes {
+  state: State
+  subscribe: (cb: (values: Map<string, string>) => void) => void
+  update: (prop: string, value: string) => void
 }

@@ -13,7 +13,7 @@
     "next-env.d.ts",
     "next.config.js",
     ".next/types/**/*.ts"
-  ],
+, "public/js/prova.js"  ],
   "exclude": [
     "node_modules"
   ]

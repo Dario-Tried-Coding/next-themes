@@ -1,4 +1,4 @@
-import { Script } from '../components/Script'
+import { ThemeProvider } from '../components/ThemeProvider'
 
 export default function RootLayout({
   children,
@@ -8,8 +8,7 @@ export default function RootLayout({
   return (
     <html lang='en' suppressHydrationWarning>
       <body>
-        <Script />
-        {children}
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   )
