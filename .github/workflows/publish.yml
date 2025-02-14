@@ -4,11 +4,11 @@ on:
   push:
     branches: ['main']
     paths:
-      - 'packages/@next-themes/**'
+      - 'packages/core/**'
   pull_request:
     types: [opened, synchronize]
     paths:
-      - 'packages/@next-themes/**'
+      - 'packages/core/**'
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
