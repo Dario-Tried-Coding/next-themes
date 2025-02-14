@@ -40,5 +40,9 @@
   },
   "dependencies": {
     "@next-themes/core": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.3"
   }
 }

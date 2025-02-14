@@ -111,6 +111,13 @@ importers:
       '@next-themes/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      tsup:
+        specifier: ^8.3.5
+        version: 8.3.6(postcss@8.5.1)(typescript@5.7.3)
+      typescript:
+        specifier: ^5.7.3
+        version: 5.7.3
 
   packages/typescript-config: {}
 
@@ -2873,7 +2880,7 @@ snapshots:
     dependencies:
       '@typescript-eslint/typescript-estree': 8.15.0(typescript@5.5.4)
       '@typescript-eslint/utils': 8.15.0(eslint@9.15.0)(typescript@5.5.4)
-      debug: 4.3.7
+      debug: 4.4.0
       eslint: 9.15.0
       ts-api-utils: 1.4.0(typescript@5.5.4)
     optionalDependencies:
@@ -2887,7 +2894,7 @@ snapshots:
     dependencies:
       '@typescript-eslint/types': 8.15.0
       '@typescript-eslint/visitor-keys': 8.15.0
-      debug: 4.3.7
+      debug: 4.4.0
       fast-glob: 3.3.2
       is-glob: 4.0.3
       minimatch: 9.0.5
@@ -4361,7 +4368,7 @@ snapshots:
       cac: 6.7.14
       chokidar: 4.0.3
       consola: 3.4.0
-      debug: 4.3.7
+      debug: 4.4.0
       esbuild: 0.24.2
       joycon: 3.1.1
       picocolors: 1.1.1
