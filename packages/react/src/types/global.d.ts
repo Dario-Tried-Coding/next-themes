@@ -1,4 +1,4 @@
-import { NextThemes } from "@next-themes/core/types";
+import { NextThemes } from '@next-themes/core/types'
 
 declare global {
   interface Window {

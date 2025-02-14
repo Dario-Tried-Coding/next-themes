@@ -2,9 +2,9 @@ import { ScriptArgs } from './types'
 import { ModeProp, ResolvedMode, Selector, Strat } from './types/config/mode'
 import { EventMap } from './types/events'
 import { Observer } from './types/script'
-import { NullOr, UndefinedOr } from './types/utils'
+import { NullOr, UndefinedOr } from '@repo/typescript-utils/nullable'
 
-export type State = NullOr<Map<string, string>>
+export type State = Map<string, string>
 
 export function script({ storageKey, config, observers: provObservers }: ScriptArgs) {
   // #region DEFAULTS

@@ -1,0 +1,1 @@
+export type { Config, Props } from '@next-themes/core/types/config'

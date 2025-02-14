@@ -1,5 +1,5 @@
 {
-  "name": "react",
+  "name": "@next-themes/react",
   "version": "0.0.0",
   "description": "A typesafe abstraction for advanced theming in your React apps.",
   "main": "./dist/index.js",
@@ -39,10 +39,16 @@
     }
   },
   "dependencies": {
-    "@next-themes/core": "workspace:*"
+    "@next-themes/core": "workspace:*",
+    "@repo/typescript-utils": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^16.8 || ^17 || ^18 || ^19 || ^19.0.0-rc"
   },
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",
+    "@types/react": "18.3.1",
+    "react": "^19.0.0",
     "tsup": "^8.3.5",
     "typescript": "^5.7.3",
     "vitest": "^3.0.4"

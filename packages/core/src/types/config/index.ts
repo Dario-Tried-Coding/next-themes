@@ -1,9 +1,11 @@
-import { UndefinedOr } from '../utils'
+import { UndefinedOr } from '@repo/typescript-utils/nullable'
 import { GenericMono, GenericMulti, GenericProp } from './generic'
 import { ModeMono, ModeMulti, ModeProp, ModeSystem } from './mode'
 import { ExplicitProp, Props, SystemValues } from './props'
 
-type ExtractProps<Ps extends Props> = Ps[number] extends infer U ? (U extends string ? U : U extends ExplicitProp ? U['prop'] : never) : never
+export type { Props } from './props'
+
+export type ExtractProps<Ps extends Props> = Ps[number] extends infer U ? (U extends string ? U : U extends ExplicitProp ? U['prop'] : never) : never
 type ResolveProp<P extends Props[number]> = P extends ExplicitProp
   ? P['values'] extends string
     ? GenericMono<P['values']> | ModeMono<P['values']>
@@ -21,3 +23,5 @@ export type Config<Ps extends UndefinedOr<Props> = undefined> = Ps extends Props
   : {
       [key: string]: GenericProp | ModeProp
     }
+
+export type { ResolvedMode } from './mode'
