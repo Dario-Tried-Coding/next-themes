@@ -1,6 +1,6 @@
 {
   "name": "@next-themes/core",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "A typesafe abstraction for advanced theming across frameworks.",
   "private": false,
   "main": "./dist/index.js",
