@@ -1,5 +1,11 @@
 # @next-themes/core
 
+## 0.0.2
+
+### Patch Changes
+
+- @next-themes/react initialization & @next-themes/core file refactoring for code sharing among packages
+
 ## 0.0.1
 
 ### Patch Changes

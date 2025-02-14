@@ -5,10 +5,12 @@ on:
     branches: ['main']
     paths:
       - 'packages/core/**'
+      - 'packages/react/**'
   pull_request:
     types: [opened, synchronize]
     paths:
       - 'packages/core/**'
+      - 'packages/react/**'
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 

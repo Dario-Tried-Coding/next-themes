@@ -2,7 +2,7 @@
   "name": "next-themes",
   "private": true,
   "scripts": {
-    "CI": "turbo lint test build --filter=@next-themes/core",
+    "CI": "turbo lint test build --filter=@next-themes/core --filter=@next-themes/react",
     "publish": "pnpm run CI && changeset publish",
     "build": "turbo build",
     "dev": "turbo dev",
