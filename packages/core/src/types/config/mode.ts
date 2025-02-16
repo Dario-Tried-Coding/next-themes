@@ -1,6 +1,6 @@
 import { Strats as BaseStrats } from './shared'
 import { SystemValues } from './props'
-import { HasKeys } from '@repo/typescript-utils/keys'
+import { HasKeys } from '@repo/typescript-utils/object'
 
 type Strats = BaseStrats & {
   light_dark: 'light_dark'

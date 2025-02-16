@@ -12,6 +12,7 @@ const config = {
     base: 'system',
     fallback: 'dark',
     selector: 'colorScheme',
+    store: true
   },
   radius: {
     type: 'generic',

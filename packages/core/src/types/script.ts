@@ -1,4 +1,4 @@
-import { State } from '../script';
+import { Constraints, State } from '../script';
 import { Config } from './config';
 
 export type Observer = 'storage' | 'DOM-attrs'
@@ -11,6 +11,7 @@ export type ScriptArgs = {
 
 export interface NextThemes {
   state: State
+  options: Constraints
   subscribe: (cb: (values: Map<string, string>) => void) => void
   update: (prop: string, value: string) => void
 }

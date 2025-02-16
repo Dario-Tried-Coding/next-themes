@@ -5,6 +5,9 @@ import { Observer } from './types/script'
 import { NullOr, UndefinedOr } from '@repo/typescript-utils/nullable'
 
 export type State = Map<string, string>
+export type Constraints = Map<string, { base: string; options: Set<string> }>
+type ModeHandling = { prop: string; strategy: Strat; resolvedModes: Map<string, ResolvedMode>; system: UndefinedOr<{ mode: string; fallback: string }>; selectors: Selector[]; store: boolean; storageKey: string }
+type Observers = Observer[]
 
 export function script({ storageKey, config, observers: provObservers }: ScriptArgs) {
   // #region DEFAULTS
@@ -19,9 +22,6 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
   } as const
 
   // #region CONFIG PROCESSOR (CP)
-  type Constraints = Map<string, { base: string; options: Set<string> }>
-  type ModeHandling = { prop: string; strategy: Strat; resolvedModes: Map<string, ResolvedMode>; system: UndefinedOr<{ mode: string; fallback: string }>; selectors: Selector[]; store: boolean; storageKey: string }
-  type Observers = Observer[]
   class ConfigProcessor {
     private static instance: ConfigProcessor
     private _storageKey: string
@@ -238,6 +238,7 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
   class StorageManager {
     private static instance: UndefinedOr<StorageManager> = undefined
     private _state: NullOr<Map<string, string>> = null
+    private _mode: UndefinedOr<string> = undefined
 
     private constructor() {
       const stateString = StorageManager.retrieve(ConfigProcessor.storageKey)
@@ -248,12 +249,26 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
 
       if (ConfigProcessor.observers.includes('storage')) {
         window.addEventListener('storage', ({ key, newValue, oldValue }) => {
-          if (key === ConfigProcessor.storageKey) {
-            const state = StorageManager.state
-            const { values, passed, results } = Validator.ofJSON(newValue).validate(oldValue)
+          // prettier-ignore
+          switch (key) {
+            case ConfigProcessor.storageKey: {
+              const state = StorageManager.state
+              const { values } = Validator.ofJSON(newValue).validate(oldValue)
 
-            StorageManager.state = values
-            if (!Utils.isSameMap(values, state)) EventManager.emit('Storage:update', values)
+              StorageManager.state = values
+              if (!Utils.isSameMap(values, state)) EventManager.emit('Storage:update', values)
+            }; break;
+            case ConfigProcessor.modeHandling?.storageKey: {
+              if (!ConfigProcessor.modeHandling?.store) return
+
+              const mode = StorageManager.state.get(ConfigProcessor.modeHandling.prop)
+              const { value } = Validator.validate(ConfigProcessor.modeHandling.prop, newValue, oldValue)
+
+              if (!value) return
+
+              StorageManager.mode = value
+              if (value !== mode) EventManager.emit('Storage:update', StorageManager.state)
+            }; break;
           }
         })
       }
@@ -291,10 +306,36 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
 
       const needsUpdate = !Utils.isSameMap(currState, merged)
       if (needsUpdate) StorageManager.instance!._state = merged
+
+      if (ConfigProcessor.modeHandling?.store) {
+        const mode = merged.get(ConfigProcessor.modeHandling.prop)
+        const needsUpdate = mode !== StorageManager.mode
+        if (needsUpdate) StorageManager.instance!._mode = mode
+      }
+
       StorageManager.storeState(merged)
+    }
+
+    public static get mode() {
+      if (!StorageManager.instance) StorageManager.instance = new StorageManager()
+      return StorageManager.instance._mode!
+    }
+
+    public static set mode(mode: string) {
+      if (!ConfigProcessor.modeHandling?.store) return
+
+      const currMode = StorageManager.mode
+
+      const needsUpdate = mode !== currMode
+      if (needsUpdate) StorageManager.instance!._mode = mode
+
+      StorageManager.state = new Map([[ConfigProcessor.modeHandling.prop, mode]])
+
+      StorageManager.storeMode(mode)
     }
   }
 
+  // #region DOM MANAGER (DM)
   class DOMManager {
     private static instance: UndefinedOr<DOMManager> = undefined
     private static target = document.documentElement
@@ -433,6 +474,7 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
     }
   }
 
+  // #region MAIN
   class Main {
     private static instance: UndefinedOr<Main> = undefined
     private _state: NullOr<Map<string, string>> = null
@@ -473,6 +515,7 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
     }
   }
 
+  // #region NEXT-THEMES
   class NextThemes {
     public static get state() {
       return Main.state
@@ -480,6 +523,10 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
 
     public static set state(values: Map<string, string>) {
       Main.state = values
+    }
+
+    public static get options() {
+      return ConfigProcessor.constraints
     }
 
     public static subscribe(cb: (values: Map<string, string>) => void) {

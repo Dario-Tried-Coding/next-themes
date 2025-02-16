@@ -1,21 +1,23 @@
 'use client'
 
-import { Config, Props } from '@next-themes/core/types/config'
-import { PropsWithChildren, useEffect, useState } from 'react'
-import { Script } from './Script'
 import { ScriptArgs } from '@next-themes/core/types'
+import { Config, Props } from '@next-themes/core/types/config'
+import { NullOr } from '@repo/typescript-utils/nullable'
+import { PropsWithChildren, useEffect, useRef, useState } from 'react'
 import { NextThemesContext } from '../context'
 import { State as MState } from '../types/state'
-import { NullOr } from '@repo/typescript-utils/nullable'
+import { Script } from './Script'
 
 interface NextThemesProviderProps<Ps extends Props, C extends Config<Ps>> extends PropsWithChildren, Omit<ScriptArgs, 'config'> {
   config: C
 }
 export const NextThemesProvider = <Ps extends Props, C extends Config<Ps>>({ config, observers, storageKey, children }: NextThemesProviderProps<Ps, C>) => {
   const [state, setState] = useState<NullOr<MState<Ps, C>>>(null)
+  const options = useRef<NextThemesContext<Ps, C>['options']>({} as NextThemesContext<Ps, C>['options'])
 
   useEffect(() => {
     setState(Object.fromEntries(window.NextThemes.state) as MState<Ps, C>)
+    options.current = Object.fromEntries(Array.from(window.NextThemes.options.entries(), ([key, { options }]) => [key, Array.from(options)])) as NextThemesContext<Ps, C>['options']
     window.NextThemes.subscribe((values) => setState(Object.fromEntries(values) as MState<Ps, C>))
   }, [])
 
@@ -26,7 +28,7 @@ export const NextThemesProvider = <Ps extends Props, C extends Config<Ps>>({ con
   }
 
   return (
-    <NextThemesContext.Provider value={{ state, updateState }}>
+    <NextThemesContext.Provider value={{ state, updateState, options: options.current }}>
       <Script scriptArgs={{ storageKey, config, observers }} />
       {children}
     </NextThemesContext.Provider>

@@ -6,6 +6,6 @@
   "exports": {
     "./prettify": "./prettify.ts",
     "./nullable": "./nullable.ts",
-    "./keys": "./keys.ts"
+    "./object": "./object.ts"
   }
 }

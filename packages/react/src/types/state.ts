@@ -1,5 +1,5 @@
 import { Prettify } from "@repo/typescript-utils/prettify";
-import { Keyof } from "@repo/typescript-utils/keys";
+import { Keyof } from "@repo/typescript-utils/object";
 import { Config, ExtractProps, Props, ResolvedMode } from "@next-themes/core/types/config";
 
 export type State<Ps extends Props, C extends Config<Ps>> = Prettify<{
