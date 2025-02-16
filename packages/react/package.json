@@ -1,6 +1,6 @@
 {
   "name": "@next-themes/react",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A typesafe abstraction for advanced theming in your React apps.",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

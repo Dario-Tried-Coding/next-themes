@@ -1,5 +1,13 @@
 # @next-themes/react
 
+## 0.0.2
+
+### Patch Changes
+
+- Add 'options' API support
+- Updated dependencies
+  - @next-themes/core@0.0.3
+
 ## 0.0.1
 
 ### Patch Changes
