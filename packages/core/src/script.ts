@@ -1,8 +1,8 @@
+import { NullOr, UndefinedOr } from '@repo/typescript-utils/nullable'
 import { ScriptArgs } from './types'
-import { ModeProp, ResolvedMode, Selector, Strat } from './types/config/mode'
+import { ModeProp, ResolvedMode, Strat } from './types/config/mode'
 import { EventMap } from './types/events'
 import { DEFAULTS, Observer } from './types/script'
-import { NullOr, UndefinedOr } from '@repo/typescript-utils/nullable'
 
 export type State = Map<string, string>
 export type Constraints = Map<string, { base: string; options: Set<string> }>
