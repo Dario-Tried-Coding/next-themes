@@ -1,5 +1,12 @@
 # @next-themes/react
 
+## 0.0.3
+
+### Patch Changes
+
+- Updated dependencies [b7ac8ef]
+  - @next-themes/core@0.0.4
+
 ## 0.0.2
 
 ### Patch Changes
