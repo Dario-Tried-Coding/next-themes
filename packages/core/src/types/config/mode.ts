@@ -11,7 +11,7 @@ export type Strat = Strats[keyof Strats]
 export type Selector = 'class' | 'colorScheme'
 export type ResolvedMode = 'light' | 'dark'
 
-type Mode = { type: 'mode'; selector?: Selector | Selector[]; store?: boolean; storageKey?: string }
+type Mode = { type: 'mode' }
 
 export type ModeMono<V extends string = string> = Mode & { strategy: Strats['mono']; key: V; colorScheme: ResolvedMode }
 

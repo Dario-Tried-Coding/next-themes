@@ -1,37 +1,41 @@
 import { ScriptArgs } from './types'
 import { ModeProp, ResolvedMode, Selector, Strat } from './types/config/mode'
 import { EventMap } from './types/events'
-import { Observer } from './types/script'
+import { DEFAULTS, Observer } from './types/script'
 import { NullOr, UndefinedOr } from '@repo/typescript-utils/nullable'
 
 export type State = Map<string, string>
 export type Constraints = Map<string, { base: string; options: Set<string> }>
-type ModeHandling = { prop: string; strategy: Strat; resolvedModes: Map<string, ResolvedMode>; system: UndefinedOr<{ mode: string; fallback: string }>; selectors: Selector[]; store: boolean; storageKey: string }
+type ModeHandling = { prop: string; strategy: Strat; resolvedModes: Map<string, ResolvedMode>; system: UndefinedOr<{ mode: string; fallback: string }> } & Required<ScriptArgs['mode']>
 type Observers = Observer[]
 
-export function script({ storageKey, config, observers: provObservers }: ScriptArgs) {
+export function script(config: ScriptArgs) {
   // #region DEFAULTS
   const defaults = {
     storageKey: 'next-themes',
-    modeHandling: {
+    mode: {
       storageKey: 'theme',
       store: false,
-      Selectors: [] as const satisfies Selector[],
+      attribute: [],
     },
-    observers: [] as const satisfies Observer[],
-  } as const
+    observe: [],
+    nonce: '',
+    disableTransitionOnChange: false,
+  } as const satisfies DEFAULTS
 
   // #region CONFIG PROCESSOR (CP)
   class ConfigProcessor {
     private static instance: ConfigProcessor
-    private _storageKey: string
+    private _storageKey = config.storageKey ?? defaults.storageKey
     private _constraints: Constraints
     private _modeHandling: NullOr<ModeHandling>
-    private _observers: Observers
+    private _observers: Observers = config.observe ?? defaults.observe
+    private _nonce = config.nonce ?? defaults.nonce
+    private _disableTransitionOnChange = config.disableTransitionOnChange ?? defaults.disableTransitionOnChange
 
     private constructor() {
       const constraints: Constraints = new Map()
-      for (const [prop, stratObj] of Object.entries(config)) {
+      for (const [prop, stratObj] of Object.entries(config.config)) {
         // prettier-ignore
         switch (stratObj.strategy) {
           case 'mono': constraints.set(prop, { options: new Set([stratObj.key]), base: stratObj.key }); break
@@ -54,7 +58,8 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
       }
       this._constraints = constraints
 
-      const modeConfig = Object.entries(config).find(([_, { type }]) => type === 'mode') as UndefinedOr<[string, ModeProp]>
+      const modeHandling = config.mode
+      const modeConfig = Object.entries(config.config).find(([_, { type }]) => type === 'mode') as UndefinedOr<[string, ModeProp]>
 
       const resolvedModes: Map<string, ResolvedMode> = new Map()
       // prettier-ignore
@@ -82,14 +87,11 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
                     fallback: modeConfig[1].fallback,
                   }
                 : undefined,
-            selectors: modeConfig[1].selector ? (Array.isArray(modeConfig[1].selector) ? modeConfig[1].selector : [modeConfig[1].selector]) : defaults.modeHandling.Selectors,
-            store: modeConfig[1].store ?? defaults.modeHandling.store,
-            storageKey: modeConfig[1].storageKey ?? defaults.modeHandling.storageKey,
+            attribute: modeHandling?.attribute ?? defaults.mode.attribute,
+            store: modeHandling?.store ?? defaults.mode.store,
+            storageKey: modeHandling?.storageKey ?? defaults.mode.storageKey,
           }
         : null
-
-      this._storageKey = storageKey ?? defaults.storageKey
-      this._observers = provObservers ?? defaults.observers
     }
 
     private static getInstance() {
@@ -111,6 +113,14 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
 
     public static get storageKey() {
       return ConfigProcessor.getInstance()._storageKey
+    }
+
+    public static get nonce() {
+      return ConfigProcessor.getInstance()._nonce
+    }
+
+    public static get disableTransitionOnChange() {
+      return ConfigProcessor.getInstance()._disableTransitionOnChange
     }
   }
 
@@ -354,7 +364,7 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
             // prettier-ignore
             switch (attributeName) {
               case 'style': {
-                if (!ConfigProcessor.modeHandling?.selectors.includes('colorScheme')) return
+                if (!ConfigProcessor.modeHandling?.attribute.includes('colorScheme')) return
 
                 const stateRM = DOMManager.resolvedMode!
                 const newRM = DOMManager.target.style.colorScheme
@@ -362,7 +372,7 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
                 if (stateRM !== newRM) DOMManager.target.style.colorScheme = stateRM
               }; break;
               case 'class': { 
-                if (!ConfigProcessor.modeHandling?.selectors.includes('class')) return
+                if (!ConfigProcessor.modeHandling?.attribute.includes('class')) return
 
                 const stateRM = DOMManager.resolvedMode!
                 const newRM = DOMManager.target.classList.contains('light') ? 'light' : DOMManager.target.classList.contains('dark') ? 'dark' : undefined
@@ -393,8 +403,8 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
           attributeOldValue: true,
           attributeFilter: [
             ...Array.from(ConfigProcessor.constraints.keys()).map((prop) => `data-${prop}`),
-            ...(ConfigProcessor.modeHandling?.selectors.includes('colorScheme') ? ['style'] : []),
-            ...(ConfigProcessor.modeHandling?.selectors.includes('class') ? ['class'] : []),
+            ...(ConfigProcessor.modeHandling?.attribute.includes('colorScheme') ? ['style'] : []),
+            ...(ConfigProcessor.modeHandling?.attribute.includes('class') ? ['class'] : []),
           ],
         })
       }
@@ -421,6 +431,8 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
     }
 
     private static applyState(values: Map<string, string>) {
+      const enableTransitions = ConfigProcessor.disableTransitionOnChange ? DOMManager.disableTransitions() : null
+
       values.forEach((value, key) => {
         const currValue = DOMManager.target.getAttribute(`data-${key}`)
         const needsUpdate = currValue !== value
@@ -429,21 +441,35 @@ export function script({ storageKey, config, observers: provObservers }: ScriptA
 
       const resolvedMode = DOMManager.resolveMode(values)
       if (resolvedMode) DOMManager.applyResolvedMode(resolvedMode)
+      
+      enableTransitions?.()
     }
 
     private static applyResolvedMode(resolvedMode: ResolvedMode) {
-      if (ConfigProcessor.modeHandling?.selectors.includes('colorScheme')) {
+      if (ConfigProcessor.modeHandling?.attribute.includes('colorScheme')) {
         const currValue = DOMManager.target.style.colorScheme
         const needsUpdate = currValue !== resolvedMode
         if (needsUpdate) DOMManager.target.style.colorScheme = resolvedMode
       }
 
-      if (ConfigProcessor.modeHandling?.selectors.includes('class')) {
+      if (ConfigProcessor.modeHandling?.attribute.includes('class')) {
         const isSet = DOMManager.target.classList.contains('light') ? 'light' : DOMManager.target.classList.contains('dark') ? 'dark' : undefined
         if (isSet === resolvedMode) return
 
         const other = resolvedMode === 'light' ? 'dark' : 'light'
         DOMManager.target.classList.replace(other, resolvedMode) || DOMManager.target.classList.add(resolvedMode)
+      }
+    }
+
+    private static disableTransitions() {
+      const css = document.createElement('style')
+      if (ConfigProcessor.nonce) css.setAttribute('nonce', ConfigProcessor.nonce)
+      css.appendChild(document.createTextNode(`*,*::before,*::after{-webkit-transition:none!important;-moz-transition:none!important;-o-transition:none!important;-ms-transition:none!important;transition:none!important}`))
+      document.head.appendChild(css)
+
+      return () => {
+        ;(() => window.getComputedStyle(document.body))()
+        setTimeout(() => document.head.removeChild(css), 1)
       }
     }
 

@@ -8,10 +8,10 @@ import { NextThemesContext } from '../context'
 import { State as MState } from '../types/state'
 import { Script } from './Script'
 
-interface NextThemesProviderProps<Ps extends Props, C extends Config<Ps>> extends PropsWithChildren, Omit<ScriptArgs, 'config'> {
+interface NextThemesProviderProps<Ps extends Props, C extends Config<Ps>> extends PropsWithChildren, ScriptArgs {
   config: C
 }
-export const NextThemesProvider = <Ps extends Props, C extends Config<Ps>>({ config, observers, storageKey, children }: NextThemesProviderProps<Ps, C>) => {
+export const NextThemesProvider = <Ps extends Props, C extends Config<Ps>>({ children, ...scriptArgs }: NextThemesProviderProps<Ps, C>) => {
   const [state, setState] = useState<NullOr<MState<Ps, C>>>(null)
   const options = useRef<NextThemesContext<Ps, C>['options']>({} as NextThemesContext<Ps, C>['options'])
 
@@ -29,7 +29,7 @@ export const NextThemesProvider = <Ps extends Props, C extends Config<Ps>>({ con
 
   return (
     <NextThemesContext.Provider value={{ state, updateState, options: options.current }}>
-      <Script scriptArgs={{ storageKey, config, observers }} />
+      <Script scriptArgs={scriptArgs} />
       {children}
     </NextThemesContext.Provider>
   )

@@ -11,8 +11,6 @@ const config = {
     strategy: 'system',
     base: 'system',
     fallback: 'dark',
-    selector: 'colorScheme',
-    store: true
   },
   radius: {
     type: 'generic',
@@ -24,7 +22,7 @@ const config = {
 type TConfig = typeof config
 
 export const ThemingProvider: FC<PropsWithChildren> = ({ children }) => (
-  <NextThemesProvider<TProps, TConfig> config={config} observers={['DOM-attrs', 'storage']}>
+  <NextThemesProvider<TProps, TConfig> config={config} observe={['DOM-attrs', 'storage']} mode={{ store: true, attribute: ['colorScheme'] }} disableTransitionOnChange>
     {children}
   </NextThemesProvider>
 )
